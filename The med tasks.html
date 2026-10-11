@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The med tasks</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f4f1ec;--card:#fff;--tx:#222;--mu:#777;--bd:#ddd;--ac:#c2410c;--hi:#dc2626;--md:#d97706;--lo:#16a34a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1b19;--card:#2a2926;--tx:#eee;--mu:#aaa;--bd:#444}}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:Tahoma,"Segoe UI",Arial,sans-serif;font-size:14px}
+header{padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--bd)}
+h1{font-size:18px;margin:0 0 0 auto}
+button,input,select{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:6px 10px}
+button{cursor:pointer}.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+main{display:flex;gap:12px;padding:12px;align-items:flex-start}
+aside{width:210px;flex:none;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px;position:sticky;top:8px}
+aside h3,.col h3{margin:0 0 8px;font-size:14px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:#1e40af;color:#fff;border-radius:6px;padding:5px 9px;margin:3px;cursor:grab;user-select:none}
+.chip.sel{outline:3px solid #facc15}.chip small{opacity:.8}
+.chip.in{background:#475569;padding:3px 7px}.chip b{cursor:pointer;margin-inline-start:2px}
+#board{flex:1;display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:10px;min-width:0;overflow-x:auto}
+.col{background:rgba(128,128,128,.1);border-radius:10px;padding:8px;min-height:240px}
+.col.over{outline:2px dashed var(--ac)}
+.task{background:var(--card);border:1px solid var(--bd);border-inline-start:5px solid var(--c);border-radius:8px;padding:8px;margin-bottom:8px}
+.task.over{outline:2px solid #1e40af}.task.done{opacity:.55}.task.done .t{text-decoration:line-through}
+.t{font-weight:700;margin-bottom:4px}.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;font-size:12px;color:var(--mu)}
+.row select,.row input{padding:2px 4px;font-size:12px}.drop{min-height:30px;border:1px dashed var(--bd);border-radius:6px;padding:2px}
+.late{color:var(--hi);font-weight:700}
+@media(max-width:800px){main{flex-direction:column}aside{width:100%;position:static}#board{grid-template-columns:1fr;width:100%}}
+@media print{aside,header button,.row select,.del{display:none}}
+</style></head><body>
+<header><h1>🏗️ لوحة مهام الموقع</h1><span id="mode" style="font-size:12px;color:var(--mu)"></span>
+<input id="nt" placeholder="مهمة جديدة..." size="22"><input id="nl" placeholder="الموقع/الدور" size="10">
+<button class="pri" onclick="addTask()">+ مهمة</button><button onclick="exportCsv()">تصدير Excel</button><button onclick="window.print()">طباعة</button></header>
+<main><aside id="staff"></aside><div id="board"></div></main>
+<script>
+const P={high:['عاجلة','#dc2626'],mid:['متوسطة','#d97706'],low:['عادية','#16a34a']};
+const S={todo:'لم يبدأ',doing:'جاري',done:'تم'};
+let st;const K='siteTasksV1';
+try{st=JSON.parse(localStorage.getItem(K))}catch(e){}
+if(!st)st={staff:['مهندس أحمد','مهندس سارة','الأسطى محمود','الأسطى علي','فورمان حسن','مراقب جودة'].map((n,i)=>({id:'s'+i,name:n})),
+tasks:[{id:'t1',title:'صب أعمدة الدور الثالث',loc:'الدور 3',pri:'high',status:'doing',due:'',staff:['s2']},
+{id:'t2',title:'تشطيب بياض الواجهة',loc:'واجهة شمالية',pri:'mid',status:'todo',due:'',staff:[]},
+{id:'t3',title:'جرد مخزن الحديد',loc:'المخزن',pri:'low',status:'todo',due:'',staff:[]}]};
+let sel=null;
+let db=null,pT={},pS={};
+function sync(col,arr,prev){const ids={};arr.forEach(o=>{ids[o.id]=1;const j=JSON.stringify(o);if(prev[o.id]!==j){prev[o.id]=j;db.doc(col+'/'+o.id).set(o).catch(()=>{})}});
+ Object.keys(prev).forEach(i=>{if(!ids[i]){delete prev[i];db.doc(col+'/'+i).delete().catch(()=>{})}})}
+const save=()=>{if(db){sync('tasks',st.tasks,pT);sync('staff',st.staff,pS)}else{try{localStorage.setItem(K,JSON.stringify(st))}catch(e){}}};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nm=id=>(st.staff.find(s=>s.id===id)||{}).name||'؟';
+function draw(){
+ const cnt=id=>st.tasks.filter(t=>t.status!=='done'&&t.staff.includes(id)).length;
+ staff.innerHTML='<h3>الموظفين <small style="color:var(--mu)">(اسحب أو اضغط)</small></h3>'+st.staff.map(s=>`<span class="chip${sel===s.id?' sel':''}" draggable="true" data-s="${s.id}">${esc(s.name)} <small>${cnt(s.id)}</small><b data-rm="${s.id}" title="حذف">×</b></span>`).join('')+
+ '<div style="margin-top:8px"><input id="ns" placeholder="اسم موظف" size="12"><button onclick="addStaff()">+</button></div><p style="font-size:11px;color:var(--mu)">الرقم = عدد مهامه المفتوحة. اسحب الاسم هنا لإزالته من مهمة.</p>';
+ board.innerHTML=Object.keys(P).map(k=>`<div class="col" data-p="${k}"><h3 style="color:${P[k][1]}">● ${P[k][0]}</h3>`+
+  st.tasks.filter(t=>t.pri===k).map(t=>{const late=t.due&&t.status!=='done'&&t.due<new Date().toISOString().slice(0,10);
+  return `<div class="task ${t.status==='done'?'done':''}" style="--c:${P[k][1]}" draggable="true" data-t="${t.id}"><div class="t">${esc(t.title)}</div>
+  <div class="drop">${t.staff.map(i=>`<span class="chip in" draggable="true" data-x="${t.id}|${i}">${esc(nm(i))}<b data-un="${t.id}|${i}">×</b></span>`).join('')||'<span style="color:var(--mu);font-size:12px">اسحب موظف هنا</span>'}</div>
+  <div class="row">${t.loc?'📍'+esc(t.loc):''}<select data-st="${t.id}">${Object.entries(S).map(([a,b])=>`<option value="${a}"${t.status===a?' selected':''}>${b}</option>`).join('')}</select>
+  <input type="date" data-du="${t.id}" value="${t.due}" class="${late?'late':''}"><button class="del" data-del="${t.id}">🗑</button></div></div>`}).join('')+'</div>').join('');
+}
+function render(){save();draw()}
+function addTask(){const v=nt.value.trim();if(!v)return;st.tasks.push({id:'t'+Date.now(),title:v,loc:nl.value.trim(),pri:'mid',status:'todo',due:'',staff:[]});nt.value=nl.value='';render()}
+function addStaff(){const v=ns.value.trim();if(!v)return;st.staff.push({id:'s'+Date.now(),name:v});render()}
+function assign(tid,sid){const t=st.tasks.find(x=>x.id===tid);if(t&&!t.staff.includes(sid))t.staff.push(sid)}
+document.addEventListener('dragstart',e=>{const c=e.target.closest('[data-s],[data-x],[data-t]');if(!c)return;
+ e.dataTransfer.setData('text/plain',c.dataset.s?'s:'+c.dataset.s:c.dataset.x&&e.target.closest('.chip')?'x:'+c.dataset.x:'t:'+c.dataset.t);e.stopPropagation()});
+document.addEventListener('dragover',e=>{if(e.target.closest('.task,.col,aside')){e.preventDefault();const o=e.target.closest('.task')||e.target.closest('.col');document.querySelectorAll('.over').forEach(x=>x!==o&&x.classList.remove('over'));o&&o.classList.add('over')}});
+document.addEventListener('drop',e=>{document.querySelectorAll('.over').forEach(x=>x.classList.remove('over'));
+ const d=e.dataTransfer.getData('text/plain');if(!d)return;const [k,a,b]=d.split(/[:|]/);const tk=e.target.closest('.task'),col=e.target.closest('.col');
+ e.preventDefault();
+ if(k==='s'&&tk)assign(tk.dataset.t,a);
+ else if(k==='x'){if(tk){assign(tk.dataset.t,b);}if(tk||e.target.closest('aside')){const o=st.tasks.find(t=>t.id===a);if(o&&(!tk||tk.dataset.t!==a))o.staff=o.staff.filter(i=>i!==b)}}
+ else if(k==='t'&&col&&!tk||k==='t'&&col){const t=st.tasks.find(x=>x.id===a);if(t)t.pri=col.dataset.p}
+ render()});
+document.addEventListener('click',e=>{const g=e.target.dataset;
+ if(g.rm){if(confirm('حذف الموظف؟')){st.staff=st.staff.filter(s=>s.id!==g.rm);st.tasks.forEach(t=>t.staff=t.staff.filter(i=>i!==g.rm));render()}return}
+ if(g.un){const[t,s]=g.un.split('|');const o=st.tasks.find(x=>x.id===t);o.staff=o.staff.filter(i=>i!==s);render();return}
+ if(g.del){if(confirm('حذف المهمة؟')){st.tasks=st.tasks.filter(t=>t.id!==g.del);render()}return}
+ const c=e.target.closest('#staff .chip');if(c){sel=sel===c.dataset.s?null:c.dataset.s;render();return}
+ const tk=e.target.closest('.task');if(tk&&sel&&!e.target.closest('select,input,button')){assign(tk.dataset.t,sel);render()}});
+document.addEventListener('change',e=>{const g=e.target.dataset,t=st.tasks.find(x=>x.id===(g.st||g.du));if(!t)return;if(g.st)t.status=e.target.value;if(g.du)t.due=e.target.value;render()});
+function exportCsv(){const r=[['المهمة','الموقع','الأولوية','الحالة','الموعد','المكلفين']].concat(st.tasks.map(t=>[t.title,t.loc,P[t.pri][0],S[t.status],t.due,t.staff.map(nm).join(' + ')]));
+ const csv='\ufeff'+r.map(x=>x.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+ const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='tasks.csv';a.click()}
+const ord=(a,b)=>a.id.length-b.id.length||a.id.localeCompare(b.id);
+(async()=>{try{db=await claude.use('db')}catch(e){}
+ if(!db){mode.textContent='⚪ محفوظ على جهازك فقط';draw();return}
+ st={staff:[],tasks:[]};mode.textContent='🟢 لوحة مشتركة (تتحدث لحظياً)';draw();
+ db.collection('tasks').onSnapshot(s=>{st.tasks=s.docs.map(d=>d.data()).sort(ord);pT={};st.tasks.forEach(t=>pT[t.id]=JSON.stringify(t));draw()});
+ db.collection('staff').onSnapshot(s=>{st.staff=s.docs.map(d=>d.data()).sort(ord);pS={};st.staff.forEach(o=>pS[o.id]=JSON.stringify(o));draw()});
+})();
+</script></body></html>
